@@ -24,7 +24,7 @@ public class Program {
     public static void main(String[] args) throws IOException, COSVisitorException, ParseException {
 
         if (args.length == 0){
-            System.out.print("faltou arquivo como argumento");
+            System.out.print("Faltou arquivo como argumento.");
             System.exit(1);
             return;
         }
@@ -36,37 +36,12 @@ public class Program {
         COSDocument cosDoc = parser.getDocument();
         PDFTextStripper pdfStripper = new PDFTextStripper();
         PDDocument pdDoc = new PDDocument(cosDoc);
-        //pdfStripper.setStartPage(1);
-        //pdfStripper.setEndPage(5);
-        String parsedText = pdfStripper.getText(pdDoc);
 
-        //System.out.println(parsedText);
+        List<Map<String, String>> list = getMapList(pdfStripper, pdDoc);
 
-        String page = parsedText.substring(
-                parsedText.indexOf("PÃ¡gina") + 14,
-                parsedText.indexOf("APLICAÃ‡ÃƒO"));
-        //System.out.println(page);
-
-        String[] lines = page.split("\n");
-        List<Map<String, String>> list = new ArrayList<>();
-
-        Set<String> descs = new HashSet<>();
-        for (int i = 0; i < lines.length; i+=3) {
-            Map<String, String> map = new HashMap<>();
-
-            map.put("date", lines[i].substring(0, 10));
-            map.put("hour", lines[i].substring(11, 19)); //hour
-            map.put("description", lines[i].substring(20, lines[i].length()) + lines[i+1]); //description
-
-            String[] splited = lines[i+2].split(" ");
-            map.put("type", splited[0]); // debito ou credito
-            map.put("value", splited[1]); // valor
-            map.put("code", splited[2]); // cï¿½digo
-            map.put("balance", splited[3]); // saldo
-
-            list.add(map);
-        }
         Map<Date, String[]> result = new TreeMap<>();
+        Set<String> descs = new HashSet<>();
+
         for(Map<String, String> map : list){
             //System.out.println(map);
             if("D".equals(map.get("type"))) {
@@ -85,18 +60,71 @@ public class Program {
 
     }
 
+    private static List<Map<String, String>> getMapList(PDFTextStripper pdfStripper, PDDocument pdDoc) throws IOException {
+        List<Map<String, String>> list = new ArrayList<>();
+
+        for(int pageNumber  = 1; pageNumber <= pdDoc.getNumberOfPages(); pageNumber++) {
+
+            pdfStripper.setStartPage(pageNumber);
+            pdfStripper.setEndPage(pageNumber);
+            String parsedText = pdfStripper.getText(pdDoc);
+
+            //System.out.println(parsedText);
+
+            String page = parsedText.substring(
+                    parsedText.indexOf("Página") + 14,
+                    parsedText.indexOf("APLICAÇÃO"));
+            //System.out.println(page);
+
+            String[] lines = page.split("\n");
+
+
+            int extra = 0;
+            for (int i = 0; i < lines.length; i += (3 + extra)) {
+                Map<String, String> map = new HashMap<>();
+
+                map.put("date", lines[i].substring(0, 10));
+                map.put("hour", lines[i].substring(11, 19));
+
+                String description = lines[i].substring(20, lines[i].length()) + lines[i + 1];
+
+                if(!(lines[i + 2].startsWith("D ") || lines[i + 2].startsWith("C "))) {
+                    description += lines[i + 2];
+                    extra = 1;
+                } else {
+                    extra = 0;
+                }
+
+                map.put("description", description);
+
+                String[] splited = lines[i + 2 + extra].split(" ");
+                map.put("type", splited[0]);
+                map.put("value", splited[1]);
+                map.put("code", splited[2]);
+                map.put("balance", splited[3]);
+
+                list.add(map);
+            }
+        }
+        return list;
+    }
+
     static void addToMap(Map<Date, String[]> map, Date key, String value, String description) {
+        int index = getIndex(description);
+        if(index < 0)
+            return;
+
         if(map.containsKey(key)) {
-            map.get(key)[getIndex(description)] = value;
+            map.get(key)[index] = value;
         } else {
             String[] array = new String[4];
-            array[getIndex(description)] = value;
+            array[index] = value;
             map.put(key, array);
         }
     }
 
     private static int getIndex(String description) {
-        if(description.contains("431") || description.contains("004")){
+        if(description.contains("431") || description.contains("004") || description.contains("314")){
             if(description.contains("IDA"))
                 return 3;
             else if(description.contains("VOLTA"))
@@ -106,6 +134,7 @@ public class Program {
         } else if (description.contains("SAC")){
             return 1;
         }
-        throw new IllegalArgumentException(description);
+        System.out.print(description);
+        return -1;
     }
 }
